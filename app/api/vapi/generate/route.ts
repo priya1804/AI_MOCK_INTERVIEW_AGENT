@@ -1,13 +1,16 @@
-import { generateText } from "ai";
-import { google } from "@ai-sdk/google";
+import { generateText } from "ai"; // AI SDK to generate text
+import { google } from "@ai-sdk/google"; // Google Gemini model
 
-import { db } from "@/firebase/admin";
-import { getRandomInterviewCover } from "@/lib/utils";
+import { db } from "@/firebase/admin"; // Firestore Admin SDK (server-side)
+import { getRandomInterviewCover } from "@/lib/utils"; // Utility to get random cover image
 
+// Handle POST requests → Generate and save interview questions
 export async function POST(request: Request) {
+  // Extract fields from client request
   const { type, role, level, techstack, amount, userid } = await request.json();
 
   try {
+    // Generate interview questions with Google Gemini
     const { text: questions } = await generateText({
       model: google("gemini-2.0-flash-001"),
       prompt: `Prepare questions for a job interview.
@@ -25,27 +28,32 @@ export async function POST(request: Request) {
     `,
     });
 
+    // Build interview object
     const interview = {
       role: role,
       type: type,
       level: level,
-      techstack: techstack.split(","),
-      questions: JSON.parse(questions),
+      techstack: techstack.split(","), // convert comma-separated string into array
+      questions: JSON.parse(questions), // convert Gemini JSON string into actual array
       userId: userid,
       finalized: true,
-      coverImage: getRandomInterviewCover(),
+      coverImage: getRandomInterviewCover(), // random cover for UI
       createdAt: new Date().toISOString(),
     };
 
+    // Save interview to Firestore
     await db.collection("interviews").add(interview);
 
+    // Return success response
     return Response.json({ success: true }, { status: 200 });
   } catch (error) {
     console.error("Error:", error);
+    // Return failure response
     return Response.json({ success: false, error: error }, { status: 500 });
   }
 }
 
+// Handle GET requests → Just a test endpoint
 export async function GET() {
   return Response.json({ success: true, data: "Thank you!" }, { status: 200 });
 }
