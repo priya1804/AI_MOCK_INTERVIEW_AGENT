@@ -1,129 +1,136 @@
+// ---------------------------- IMPORTS ----------------------------
+
+// Zod for schema validation
 import { z } from "zod";
+
+// Resolver to integrate Zod with react-hook-form
 import { zodResolver } from "@hookform/resolvers/zod";
+
+// Form provider and hooks for react-hook-form
 import { FormProvider, useForm } from "react-hook-form";
 
+// Custom types
 import { Interview } from "@/types";
 
+// Custom components
 import { CustomBreadCrumb } from "./custom-bread-crumb";
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { useAuth } from "@clerk/clerk-react";
-import { toast } from "sonner";
 import { Headings } from "./headings";
 import { Button } from "./ui/button";
-import { Loader, Trash2 } from "lucide-react";
 import { Separator } from "./ui/separator";
-import {
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "./ui/form";
+import { FormControl, FormField, FormItem, FormLabel, FormMessage } from "./ui/form";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
-import { chatSession } from "@/scripts";
-import {
-  addDoc,
-  collection,
-  doc,
-  serverTimestamp,
-  updateDoc,
-} from "firebase/firestore";
+
+// Firebase imports for CRUD operations
+import { addDoc, collection, doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { db } from "@/config/firebase.config";
 
+// Clerk authentication hook
+import { useAuth } from "@clerk/clerk-react";
+
+// React hooks
+import { useEffect, useState } from "react";
+
+// Navigation hook from react-router
+import { useNavigate } from "react-router-dom";
+
+// Toast notification library
+import { toast } from "sonner";
+
+// Icons from lucide-react
+import { Loader, Trash2 } from "lucide-react";
+
+// AI chat session for generating interview questions
+import { chatSession } from "@/scripts";
+
+// ---------------------------- TYPES & SCHEMA ----------------------------
+
+// Props for FormMockInterview component
 interface FormMockInterviewProps {
-  initialData: Interview | null;
+  initialData: Interview | null; // existing interview data for edit mode
 }
 
+// Zod schema for form validation
 const formSchema = z.object({
-  position: z
-    .string()
-    .min(1, "Position is required")
-    .max(100, "Position must be 100 characters or less"),
+  position: z.string().min(1, "Position is required").max(100, "Position must be 100 characters or less"),
   description: z.string().min(10, "Description is required"),
-  experience: z.coerce
-    .number()
-    .min(0, "Experience cannot be empty or negative"),
+  experience: z.coerce.number().min(0, "Experience cannot be empty or negative"),
   techStack: z.string().min(1, "Tech stack must be at least a character"),
 });
 
+// Type inferred from schema
 type FormData = z.infer<typeof formSchema>;
 
+// ---------------------------- COMPONENT ----------------------------
+
 export const FormMockInterview = ({ initialData }: FormMockInterviewProps) => {
+  // Initialize form with react-hook-form
   const form = useForm<FormData>({
-    resolver: zodResolver(formSchema),
-    defaultValues: initialData || {},
+    resolver: zodResolver(formSchema), // integrate Zod validation
+    defaultValues: initialData || {},  // pre-fill form if editing
   });
 
-  const { isValid, isSubmitting } = form.formState;
-  const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
-  const { userId } = useAuth();
+  const { isValid, isSubmitting } = form.formState; // form state info
+  const [loading, setLoading] = useState(false);    // loading state for AI request
+  const navigate = useNavigate();                   // navigation after submit
+  const { userId } = useAuth();                     // current signed-in user ID
 
-  const title = initialData
-    ? initialData.position
-    : "Create a new mock interview";
-
+  // Titles and breadcrumb logic
+  const title = initialData ? initialData.position : "Create a new mock interview";
   const breadCrumpPage = initialData ? initialData?.position : "Create";
   const actions = initialData ? "Save Changes" : "Create";
   const toastMessage = initialData
     ? { title: "Updated..!", description: "Changes saved successfully..." }
     : { title: "Created..!", description: "New Mock Interview created..." };
 
+  // ---------------------------- HELPER FUNCTIONS ----------------------------
+
+  // Cleans AI-generated response to parse as JSON array
   const cleanAiResponse = (responseText: string) => {
-    // Step 1: Trim any surrounding whitespace
-    let cleanText = responseText.trim();
+    let cleanText = responseText.trim(); // trim spaces
+    cleanText = cleanText.replace(/(json|```|`)/g, ""); // remove code block symbols or 'json'
+    const jsonArrayMatch = cleanText.match(/\[.*\]/s); // extract JSON array from string
 
-    // Step 2: Remove any occurrences of "json" or code block symbols (``` or `)
-    cleanText = cleanText.replace(/(json|```|`)/g, "");
-
-    // Step 3: Extract a JSON array by capturing text between square brackets
-    const jsonArrayMatch = cleanText.match(/\[.*\]/s);
     if (jsonArrayMatch) {
       cleanText = jsonArrayMatch[0];
     } else {
       throw new Error("No JSON array found in response");
     }
 
-    // Step 4: Parse the clean JSON text into an array of objects
     try {
-      return JSON.parse(cleanText);
+      return JSON.parse(cleanText); // convert string to JSON array
     } catch (error) {
       throw new Error("Invalid JSON format: " + (error as Error)?.message);
     }
   };
 
+  // Generates AI interview questions based on form data
   const generateAiResponse = async (data: FormData) => {
     const prompt = `
-        As an experienced prompt engineer, generate a JSON array containing 5 technical interview questions along with detailed answers based on the following job information. Each object in the array should have the fields "question" and "answer", formatted as follows:
+      As an experienced prompt engineer, generate a JSON array containing 5 technical interview questions along with detailed answers based on the following job information:
 
-        [
-          { "question": "<Question text>", "answer": "<Answer text>" },
-          ...
-        ]
+      Job Information:
+      - Job Position: ${data?.position}
+      - Job Description: ${data?.description}
+      - Years of Experience Required: ${data?.experience}
+      - Tech Stacks: ${data?.techStack}
 
-        Job Information:
-        - Job Position: ${data?.position}
-        - Job Description: ${data?.description}
-        - Years of Experience Required: ${data?.experience}
-        - Tech Stacks: ${data?.techStack}
-
-        The questions should assess skills in ${data?.techStack} development and best practices, problem-solving, and experience handling complex requirements. Please format the output strictly as an array of JSON objects without any additional labels, code blocks, or explanations. Return only the JSON array with questions and answers.
-        `;
+      Each object must have fields "question" and "answer".
+      Format strictly as an array of JSON objects without any additional labels or code blocks.
+    `;
 
     const aiResult = await chatSession.sendMessage(prompt);
-    const cleanedResponse = cleanAiResponse(aiResult.response.text());
-
-    return cleanedResponse;
+    return cleanAiResponse(aiResult.response.text());
   };
+
+  // ---------------------------- FORM SUBMIT ----------------------------
 
   const onSubmit = async (data: FormData) => {
     try {
       setLoading(true);
 
       if (initialData) {
-        // update
+        // UPDATE EXISTING INTERVIEW
         if (isValid) {
           const aiResult = await generateAiResponse(data);
 
@@ -131,11 +138,12 @@ export const FormMockInterview = ({ initialData }: FormMockInterviewProps) => {
             questions: aiResult,
             ...data,
             updatedAt: serverTimestamp(),
-          }).catch((error) => console.log(error));
+          });
+
           toast(toastMessage.title, { description: toastMessage.description });
         }
       } else {
-        // create a new mock interview
+        // CREATE NEW INTERVIEW
         if (isValid) {
           const aiResult = await generateAiResponse(data);
 
@@ -150,17 +158,19 @@ export const FormMockInterview = ({ initialData }: FormMockInterviewProps) => {
         }
       }
 
+      // Navigate back to dashboard
       navigate("/generate", { replace: true });
     } catch (error) {
       console.log(error);
-      toast.error("Error..", {
-        description: `Something went wrong. Please try again later`,
-      });
+      toast.error("Error..", { description: "Something went wrong. Please try again later" });
     } finally {
       setLoading(false);
     }
   };
 
+  // ---------------------------- EFFECTS ----------------------------
+
+  // Reset form when editing existing interview
   useEffect(() => {
     if (initialData) {
       form.reset({
@@ -172,16 +182,19 @@ export const FormMockInterview = ({ initialData }: FormMockInterviewProps) => {
     }
   }, [initialData, form]);
 
+ 
+
   return (
     <div className="w-full flex-col space-y-4">
+      {/* Breadcrumb navigation */}
       <CustomBreadCrumb
         breadCrumbPage={breadCrumpPage}
         breadCrumpItems={[{ label: "Mock Interviews", link: "/generate" }]}
       />
 
+      {/* Heading and optional delete button */}
       <div className="mt-4 flex items-center justify-between w-full">
         <Headings title={title} isSubHeading />
-
         {initialData && (
           <Button size={"icon"} variant={"ghost"}>
             <Trash2 className="min-w-4 min-h-4 text-red-500" />
@@ -191,13 +204,13 @@ export const FormMockInterview = ({ initialData }: FormMockInterviewProps) => {
 
       <Separator className="my-4" />
 
-      <div className="my-6"></div>
-
+      {/* Form for creating/editing interview */}
       <FormProvider {...form}>
         <form
           onSubmit={form.handleSubmit(onSubmit)}
-          className="w-full p-8 rounded-lg flex-col flex items-start justify-start gap-6 shadow-md "
+          className="w-full p-8 rounded-lg flex-col flex items-start justify-start gap-6 shadow-md"
         >
+          {/* Position Field */}
           <FormField
             control={form.control}
             name="position"
@@ -220,6 +233,7 @@ export const FormMockInterview = ({ initialData }: FormMockInterviewProps) => {
             )}
           />
 
+          {/* Description Field */}
           <FormField
             control={form.control}
             name="description"
@@ -233,7 +247,7 @@ export const FormMockInterview = ({ initialData }: FormMockInterviewProps) => {
                   <Textarea
                     className="h-12"
                     disabled={loading}
-                    placeholder="eg:- describle your job role"
+                    placeholder="eg:- Describe your job role"
                     {...field}
                     value={field.value || ""}
                   />
@@ -242,6 +256,7 @@ export const FormMockInterview = ({ initialData }: FormMockInterviewProps) => {
             )}
           />
 
+          {/* Experience Field */}
           <FormField
             control={form.control}
             name="experience"
@@ -265,6 +280,7 @@ export const FormMockInterview = ({ initialData }: FormMockInterviewProps) => {
             )}
           />
 
+          {/* Tech Stack Field */}
           <FormField
             control={form.control}
             name="techStack"
@@ -287,6 +303,7 @@ export const FormMockInterview = ({ initialData }: FormMockInterviewProps) => {
             )}
           />
 
+          {/* Action Buttons */}
           <div className="w-full flex items-center justify-end gap-6">
             <Button
               type="reset"
@@ -301,11 +318,7 @@ export const FormMockInterview = ({ initialData }: FormMockInterviewProps) => {
               size={"sm"}
               disabled={isSubmitting || !isValid || loading}
             >
-              {loading ? (
-                <Loader className="text-gray-50 animate-spin" />
-              ) : (
-                actions
-              )}
+              {loading ? <Loader className="text-gray-50 animate-spin" /> : actions}
             </Button>
           </div>
         </form>

@@ -13,17 +13,24 @@ import { Link } from "react-router-dom";
 import { toast } from "sonner";
 
 export const Dashboard = () => {
+  // State to store the list of interviews and loading status
   const [interviews, setInterviews] = useState<Interview[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // Get the authenticated user ID
   const { userId } = useAuth();
 
+  // Fetch interviews from Firestore on component mount
   useEffect(() => {
     setLoading(true);
+
+    // Query interviews collection for the current user
     const interviewQuery = query(
       collection(db, "interviews"),
       where("userId", "==", userId)
     );
 
+    // Subscribe to real-time updates using onSnapshot
     const unsubscribe = onSnapshot(
       interviewQuery,
       (snapshot) => {
@@ -34,28 +41,30 @@ export const Dashboard = () => {
             ...doc.data(),
           };
         }) as Interview[];
-        setInterviews(interviewList);
-        setLoading(false);
+
+        setInterviews(interviewList); // update state
+        setLoading(false); // stop loading
       },
       (error) => {
         console.log("Error on fetching : ", error);
         toast.error("Error..", {
-          description: "SOmething went wrong.. Try again later..",
+          description: "Something went wrong.. Try again later..",
         });
         setLoading(false);
       }
     );
 
+    // Clean up subscription on component unmount
     return () => unsubscribe();
   }, [userId]);
 
   return (
     <>
+      {/* Header: Title + Add New Button */}
       <div className="flex w-full items-center justify-between">
-        {/* headings */}
         <Headings
           title="Dashboard"
-          description="Create and start you AI Mock interview"
+          description="Create and start your AI Mock interview"
         />
         <Link to={"/generate/create"}>
           <Button size={"sm"}>
@@ -65,34 +74,36 @@ export const Dashboard = () => {
       </div>
 
       <Separator className="my-8" />
-      {/* content section */}
 
+      {/* Dashboard Content Section */}
       <div className="md:grid md:grid-cols-3 gap-3 py-4">
         {loading ? (
+          // Show skeleton loaders while fetching data
           Array.from({ length: 6 }).map((_, index) => (
             <Skeleton key={index} className="h-24 md:h-32 rounded-md" />
           ))
         ) : interviews.length > 0 ? (
+          // Map through interviews and display each using InterviewPin component
           interviews.map((interview) => (
             <InterviewPin key={interview.id} interview={interview} />
           ))
         ) : (
+          // Show "No Data Found" placeholder if there are no interviews
           <div className="md:col-span-3 w-full flex flex-grow items-center justify-center h-96 flex-col">
             <img
               src="/assets/svg/not-found.svg"
               className="w-44 h-44 object-contain"
-              alt=""
+              alt="No data found"
             />
-
             <h2 className="text-lg font-semibold text-muted-foreground">
               No Data Found
             </h2>
-
             <p className="w-full md:w-96 text-center text-sm text-neutral-400 mt-4">
               There is no available data to show. Please add some new mock
               interviews
             </p>
 
+            {/* Button to create a new interview */}
             <Link to={"/generate/create"} className="mt-4">
               <Button size={"sm"}>
                 <Plus className="min-w-5 min-h-5 mr-1" />
