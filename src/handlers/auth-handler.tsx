@@ -7,8 +7,8 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 const AuthHanlder = () => {
-  const { isSignedIn } = useAuth();
-  const { user } = useUser();
+  const { isSignedIn } = useAuth(); // Auth state
+  const { user } = useUser(); // Current user info
 
   const pathname = useLocation().pathname;
   const navigate = useNavigate();
@@ -20,8 +20,10 @@ const AuthHanlder = () => {
       if (isSignedIn && user) {
         setLoading(true);
         try {
+          // Check if user exists in Firestore
           const userSanp = await getDoc(doc(db, "users", user.id));
           if (!userSanp.exists()) {
+            // Create user object
             const userData: User = {
               id: user.id,
               name: user.fullName || user.firstName || "Anonymous",
@@ -31,6 +33,7 @@ const AuthHanlder = () => {
               updateAt: serverTimestamp(),
             };
 
+            // Save user in Firestore
             await setDoc(doc(db, "users", user.id), userData);
           }
         } catch (error) {
@@ -45,7 +48,7 @@ const AuthHanlder = () => {
   }, [isSignedIn, user, pathname, navigate]);
 
   if (loading) {
-    return <LoaderPage />;
+    return <LoaderPage />; // Show loader while saving user
   }
 
   return null;

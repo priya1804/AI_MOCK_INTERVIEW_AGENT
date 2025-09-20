@@ -16,3 +16,4 @@ export const PublicLayout = () => {
     </div>
   );
 };
+
