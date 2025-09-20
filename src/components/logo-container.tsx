@@ -5,7 +5,7 @@ export const LogoContainer = () => {
     <Link to={"/"}>
       <img
         src="/assets/svg/logo.svg"
-        alt=""
+        alt="logo"
         className="min-w-10 min-h-10 object-contain"
       />
     </Link>
