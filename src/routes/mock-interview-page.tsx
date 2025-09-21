@@ -1,30 +1,40 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { Interview } from "@/types";
+import { Interview } from "@/types"; // Interview type interface
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import { LoaderPage } from "./loader-page";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "@/config/firebase.config";
-import { CustomBreadCrumb } from "@/components/custom-bread-crumb";
+import { useNavigate, useParams } from "react-router-dom"; // Routing hooks
+import { LoaderPage } from "./loader-page"; // Loading UI
+import { doc, getDoc } from "firebase/firestore"; // Firestore functions
+import { db } from "@/config/firebase.config"; // Firestore config
+import { CustomBreadCrumb } from "@/components/custom-bread-crumb"; // Breadcrumb UI
 
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Lightbulb } from "lucide-react";
-import { QuestionSection } from "@/components/question-section";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"; // Shadcn alert UI
+import { Lightbulb } from "lucide-react"; // Icon
+import { QuestionSection } from "@/components/question-section"; // Component to display questions
 
+// Main component for conducting a mock interview session
 export const MockInterviewPage = () => {
+  // Extract interviewId from route params
   const { interviewId } = useParams<{ interviewId: string }>();
+
+  // State: interview data fetched from Firestore
   const [interview, setInterview] = useState<Interview | null>(null);
 
+  // State: track loading spinner
   const [isLoading, setIsLoading] = useState(false);
 
   const navigate = useNavigate();
 
+  // Fetch interview details when page loads or when interviewId changes
   useEffect(() => {
     setIsLoading(true);
+
     const fetchInterview = async () => {
       if (interviewId) {
         try {
+          // Fetch Firestore document using interviewId
           const interviewDoc = await getDoc(doc(db, "interviews", interviewId));
+
+          // If interview exists, store it in state
           if (interviewDoc.exists()) {
             setInterview({
               id: interviewDoc.id,
@@ -32,9 +42,9 @@ export const MockInterviewPage = () => {
             } as Interview);
           }
         } catch (error) {
-          console.log(error);
+          console.log(error); // Log errors for debugging
         } finally {
-          setIsLoading(false);
+          setIsLoading(false); // Stop loader once request finishes
         }
       }
     };
@@ -42,20 +52,24 @@ export const MockInterviewPage = () => {
     fetchInterview();
   }, [interviewId, navigate]);
 
+  // Show loader while fetching data
   if (isLoading) {
     return <LoaderPage className="w-full h-[70vh]" />;
   }
 
+  // Redirect if no interviewId present in URL
   if (!interviewId) {
     navigate("/generate", { replace: true });
   }
 
+  // Redirect if interview not found
   if (!interview) {
     navigate("/generate", { replace: true });
   }
 
   return (
     <div className="flex flex-col w-full gap-8 py-5">
+      {/* Breadcrumb navigation */}
       <CustomBreadCrumb
         breadCrumbPage="Start"
         breadCrumpItems={[
@@ -67,6 +81,7 @@ export const MockInterviewPage = () => {
         ]}
       />
 
+      {/* Info alert: instructions for candidate */}
       <div className="w-full">
         <Alert className="bg-sky-100 border border-sky-200 p-4 rounded-lg flex items-start gap-3">
           <Lightbulb className="h-5 w-5 text-sky-600" />
@@ -88,6 +103,7 @@ export const MockInterviewPage = () => {
         </Alert>
       </div>
 
+      {/* Render questions if available */}
       {interview?.questions && interview?.questions.length > 0 && (
         <div className="mt-4 w-full flex flex-col items-start gap-4">
           <QuestionSection questions={interview?.questions} />
